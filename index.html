@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>360° Multi-Node Virtual Tour with Hotspots</title>
+  <meta charset="UTF-8">
+  <title>360° Tour with Arrows & Thumbnails</title>
   <link rel="stylesheet" href="https://unpkg.com/photo-sphere-viewer@4/dist/photo-sphere-viewer.css" />
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; }
+    body, html { margin: 0; padding: 0; height: 100%; }
     #viewer { width: 100%; height: 100vh; }
-    #thumbnails {
+    .thumbnails {
       position: absolute;
-      bottom: 10px;
+      bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
@@ -19,122 +19,114 @@
     .thumb {
       width: 80px;
       height: 45px;
-      object-fit: cover;
+      cursor: pointer;
       border: 2px solid white;
-      cursor: pointer;
-      border-radius: 6px;
+      border-radius: 5px;
+      object-fit: cover;
     }
-    .nav-button {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 2rem;
-      background: rgba(255, 255, 255, 0.6);
-      border: none;
-      border-radius: 50%;
-      padding: 0.5rem 1rem;
-      cursor: pointer;
-      z-index: 10;
+    .thumb.active {
+      border-color: red;
     }
-    .prev { left: 10px; }
-    .next { right: 10px; }
   </style>
 </head>
 <body>
   <div id="viewer"></div>
-  <button class="nav-button prev" onclick="goToPrev()">⬅️</button>
-  <button class="nav-button next" onclick="goToNext()">➡️</button>
-  <div id="thumbnails"></div>
+  <div class="thumbnails" id="thumbnails"></div>
 
   <script src="https://unpkg.com/three@0.140.0/build/three.min.js"></script>
   <script src="https://unpkg.com/photo-sphere-viewer@4/dist/photo-sphere-viewer.min.js"></script>
   <script>
     const scenes = [
       {
-        name: "Scene 1",
-        src: "scene1.jpg",
-        thumb: "thumb1.jpg",
-        hotspots: [
-          { yaw: 0, pitch: 0, target: 1 }
-        ]
+        id: 'scene1',
+        name: 'Entrance',
+        image: 'scene1.jpg',
+        thumbnail: 'thumb1.jpg',
+        arrows: [{ target: 'scene2', yaw: 0 }]
       },
       {
-        name: "Scene 2",
-        src: "scene2.jpg",
-        thumb: "thumb2.jpg",
-        hotspots: [
-          { yaw: 1.5, pitch: 0, target: 2 },
-          { yaw: -1.5, pitch: 0, target: 0 }
-        ]
+        id: 'scene2',
+        name: 'Hallway',
+        image: 'scene2.jpg',
+        thumbnail: 'thumb2.jpg',
+        arrows: [{ target: 'scene1', yaw: 180 }, { target: 'scene3', yaw: 0 }]
       },
       {
-        name: "Scene 3",
-        src: "scene3.jpg",
-        thumb: "thumb3.jpg",
-        hotspots: [
-          { yaw: -1, pitch: 0, target: 1 }
-        ]
+        id: 'scene3',
+        name: 'Room',
+        image: 'scene3.jpg',
+        thumbnail: 'thumb3.jpg',
+        arrows: [{ target: 'scene2', yaw: 180 }]
       }
     ];
 
-    let currentScene = 0;
+    const sceneMap = {};
+    scenes.forEach(s => sceneMap[s.id] = s);
+    let currentScene = scenes[0];
+
     const viewer = new PhotoSphereViewer.Viewer({
-      container: document.getElementById('viewer'),
-      panorama: scenes[currentScene].src,
-      defaultYaw: '180deg',
+      container: document.querySelector('#viewer'),
+      panorama: currentScene.image,
       navbar: ['zoom', 'fullscreen'],
-      plugins: [PhotoSphereViewer.MarkersPlugin]
+      defaultYaw: '0deg',
+      plugins: [
+        [PhotoSphereViewer.MarkersPlugin]
+      ]
     });
 
-    const markersPlugin = viewer.getPlugin(PhotoSphereViewer.MarkersPlugin);
+    const markers = viewer.getPlugin(PhotoSphereViewer.MarkersPlugin);
 
-    function loadScene(index) {
-      currentScene = index;
-      viewer.setPanorama(scenes[index].src).then(() => {
-        markersPlugin.clearMarkers();
-        scenes[index].hotspots.forEach(hotspot => {
-          markersPlugin.addMarker({
-            id: `hotspot-${hotspot.target}`,
-            longitude: hotspot.yaw,
-            latitude: hotspot.pitch,
-            image: 'https://cdn-icons-png.flaticon.com/512/60/60525.png',
+    function loadScene(sceneId) {
+      const scene = sceneMap[sceneId];
+      currentScene = scene;
+
+      viewer.setPanorama(scene.image).then(() => {
+        markers.clearMarkers();
+
+        // Add navigation arrows
+        scene.arrows.forEach((arrow, i) => {
+          markers.addMarker({
+            id: `arrow-${i}`,
+            image: 'https://cdn-icons-png.flaticon.com/512/545/545682.png', // arrow icon
             width: 32,
             height: 32,
-            anchor: 'bottom center',
-            tooltip: 'Go here',
-            data: { target: hotspot.target }
+            anchor: 'center',
+            yaw: arrow.yaw,
+            pitch: 0,
+            data: { target: arrow.target },
+            tooltip: 'Go to next scene',
+            style: { cursor: 'pointer' }
           });
         });
+
+        updateThumbnails(sceneId);
       });
     }
 
-    markersPlugin.on('select-marker', (e) => {
-      if (e.marker.data && e.marker.data.target !== undefined) {
+    markers.on('select-marker', (e) => {
+      if (e.marker.data && e.marker.data.target) {
         loadScene(e.marker.data.target);
       }
     });
 
-    function goToNext() {
-      currentScene = (currentScene + 1) % scenes.length;
-      loadScene(currentScene);
-    }
-
-    function goToPrev() {
-      currentScene = (currentScene - 1 + scenes.length) % scenes.length;
-      loadScene(currentScene);
-    }
-
-    const thumbsContainer = document.getElementById('thumbnails');
-    scenes.forEach((scene, index) => {
+    // Generate thumbnails
+    const thumbContainer = document.getElementById('thumbnails');
+    scenes.forEach(scene => {
       const img = document.createElement('img');
-      img.src = scene.thumb;
+      img.src = scene.thumbnail;
       img.className = 'thumb';
-      img.alt = scene.name;
-      img.onclick = () => loadScene(index);
-      thumbsContainer.appendChild(img);
+      img.onclick = () => loadScene(scene.id);
+      img.id = `thumb-${scene.id}`;
+      thumbContainer.appendChild(img);
     });
 
-    loadScene(currentScene);
+    function updateThumbnails(activeId) {
+      document.querySelectorAll('.thumb').forEach(el => el.classList.remove('active'));
+      const active = document.getElementById(`thumb-${activeId}`);
+      if (active) active.classList.add('active');
+    }
+
+    loadScene(currentScene.id);
   </script>
 </body>
 </html>
